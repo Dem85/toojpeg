@@ -366,13 +366,13 @@ uint8_t getComp(const unsigned char* pixel, PIX_FMT pixFmt, RGB_COMP comp)
 				142, 146, 150, 154, 158, 162, 166, 170, 174, 178, 182, 186, 190, 194, 198,
 				202, 206, 210, 215, 219, 223, 227, 231, 235, 239, 243, 247, 251, 255};
 			switch(comp) {
-				case _R:
+				case COMP_RED:
 					return table5[pixel[1] >> 3];
 					break;
-				case _G:
+				case COMP_GREEN:
 					return table6[((pixel[1] & 0x07) << 3) | ((pixel[0] & 0xe0) >> 5)];
 					break;
-				case _B:
+				case COMP_BLUE:
 					return table5[pixel[0] & 0x1f];
 					break;
 			}
@@ -606,9 +606,9 @@ bool writeJpeg(WRITE_ONE_BYTE output, const void* pixels_, unsigned short width,
               }
 
               // RGB: 3 bytes per pixel (whereas grayscale images have only 1 byte per pixel)
-              auto r = getComp(&pixels[rgbSize * pixelPos], pixFmt, _R);
-              auto g = getComp(&pixels[rgbSize * pixelPos], pixFmt, _G);
-              auto b = getComp(&pixels[rgbSize * pixelPos], pixFmt, _B);
+              auto r = getComp(&pixels[rgbSize * pixelPos], pixFmt, COMP_RED);
+              auto g = getComp(&pixels[rgbSize * pixelPos], pixFmt, COMP_GREEN);
+              auto b = getComp(&pixels[rgbSize * pixelPos], pixFmt, COMP_BLUE);
 
               Y   [deltaY][deltaX] = rgb2y (r, g, b) - 128; // again, the JPEG standard requires Y to be shifted by 128
               // YCbCr444 is easy - the more complex YCbCr420 has to be computed about 20 lines below in a second pass
@@ -651,9 +651,9 @@ bool writeJpeg(WRITE_ONE_BYTE output, const void* pixels_, unsigned short width,
             auto downRight = pixelPos + columnStep + rowStep;
 
             // note: cast from 8 bits to >8 bits to avoid overflows when adding
-            auto r = short(getComp(&pixels[pixelPos], pixFmt, _R)) + getComp(&pixels[down], pixFmt, _R) + getComp(&pixels[downRight], pixFmt, _R);
-            auto g = short(getComp(&pixels[pixelPos], pixFmt, _G)) + getComp(&pixels[down], pixFmt, _G) + getComp(&pixels[downRight], pixFmt, _G);
-            auto b = short(getComp(&pixels[pixelPos], pixFmt, _B)) + getComp(&pixels[down], pixFmt, _B) + getComp(&pixels[downRight], pixFmt, _B);
+            auto r = short(getComp(&pixels[pixelPos], pixFmt, COMP_RED)) + getComp(&pixels[down], pixFmt, COMP_RED) + getComp(&pixels[downRight], pixFmt, COMP_RED);
+            auto g = short(getComp(&pixels[pixelPos], pixFmt, COMP_GREEN)) + getComp(&pixels[down], pixFmt, COMP_GREEN) + getComp(&pixels[downRight], pixFmt, COMP_GREEN);
+            auto b = short(getComp(&pixels[pixelPos], pixFmt, COMP_BLUE)) + getComp(&pixels[down], pixFmt, COMP_BLUE) + getComp(&pixels[downRight], pixFmt, COMP_BLUE);
 
             // convert to Cb and Cr
             Cb[deltaY][deltaX] = rgb2cb(r, g, b) / 4; // I still have to divide r,g,b by 4 to get their average values

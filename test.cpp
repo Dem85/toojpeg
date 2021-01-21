@@ -38,9 +38,9 @@ int main(int argc, char **argv)
 		int i;
 		unsigned char *pixels3 = (unsigned char*)malloc(w*h*3);
 		for(i = 0; i < w * h; i++) {
-			pixels3[3 * i + 0] = getComp(&pixels[2 * i], TooJpeg::RGB565, TooJpeg::_R);
-			pixels3[3 * i + 1] = getComp(&pixels[2 * i], TooJpeg::RGB565, TooJpeg::_G);
-			pixels3[3 * i + 2] = getComp(&pixels[2 * i], TooJpeg::RGB565, TooJpeg::_B);
+			pixels3[3 * i + 0] = getComp(&pixels[2 * i], TooJpeg::RGB565, TooJpeg::COMP_RED);
+			pixels3[3 * i + 1] = getComp(&pixels[2 * i], TooJpeg::RGB565, TooJpeg::COMP_GREEN);
+			pixels3[3 * i + 2] = getComp(&pixels[2 * i], TooJpeg::RGB565, TooJpeg::COMP_BLUE);
 		}
 		free(pixels);
 		pixels = pixels3;

@@ -20,7 +20,7 @@
 namespace TooJpeg
 {
   typedef enum {RGB888, RGB565, YCBCR} PIX_FMT;
-  typedef enum {_R, _G, _B} RGB_COMP;
+  typedef enum {COMP_RED, COMP_GREEN, COMP_BLUE} RGB_COMP;
   unsigned char getComp(const unsigned char* pixel, PIX_FMT pixFmt, RGB_COMP comp);
 
   // write one byte (to disk, memory, ...)
