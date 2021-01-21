@@ -89,7 +89,6 @@ const uint8_t AcChrominanceValues        [162] =                                
       0x88,0x89,0x8A,0x92,0x93,0x94,0x95,0x96,0x97,0x98,0x99,0x9A,0xA2,0xA3,0xA4,0xA5,0xA6,0xA7,0xA8,0xA9,0xAA,0xB2,0xB3,0xB4,
       0xB5,0xB6,0xB7,0xB8,0xB9,0xBA,0xC2,0xC3,0xC4,0xC5,0xC6,0xC7,0xC8,0xC9,0xCA,0xD2,0xD3,0xD4,0xD5,0xD6,0xD7,0xD8,0xD9,0xDA,
       0xE2,0xE3,0xE4,0xE5,0xE6,0xE7,0xE8,0xE9,0xEA,0xF2,0xF3,0xF4,0xF5,0xF6,0xF7,0xF8,0xF9,0xFA };
-const int16_t CodeWordLimit = 2048; // +/-2^11, maximum value after DCT
 
 // ////////////////////////////////////////
 // structs
@@ -100,6 +99,13 @@ struct BitCode
   BitCode() = default; // undefined state, must be initialized at a later time
   BitCode(uint16_t code_, uint8_t numBits_)
   : code(code_), numBits(numBits_) {}
+  BitCode(int16_t value) {
+	  int16_t v, av = value > 0 ? value : -value;
+	  int32_t mask;
+	  for(numBits = 1, v = av; v > 1; v = v>>1, numBits++);
+	  mask = (1 << numBits) - 1;
+	  code = (value > 0) ? value : mask + value;
+  }
   uint16_t code;       // JPEG's Huffman codes are limited to 16 bits
   uint8_t  numBits;    // number of valid bits
 };
@@ -250,7 +256,7 @@ void DCT(float block[8*8], uint8_t stride) // stride must be 1 (=horizontal) or 
 
 // run DCT, quantize and write Huffman bit codes
 int16_t encodeBlock(BitWriter& writer, float block[8][8], const float scaled[8*8], int16_t lastDC,
-                    const BitCode huffmanDC[256], const BitCode huffmanAC[256], const BitCode* codewords)
+                    const BitCode huffmanDC[256], const BitCode huffmanAC[256])
 {
   // "linearize" the 8x8 block, treat it as a flat array of 64 floats
   auto block64 = (float*) block;
@@ -288,7 +294,7 @@ int16_t encodeBlock(BitWriter& writer, float block[8][8], const float scaled[8*8
     writer << huffmanDC[0x00];   // yes, write a special short symbol
   else
   {
-    auto bits = codewords[diff]; // nope, encode the difference to previous block's average color
+    auto bits = BitCode(diff); // nope, encode the difference to previous block's average color
     writer << huffmanDC[bits.numBits] << bits;
   }
 
@@ -309,7 +315,7 @@ int16_t encodeBlock(BitWriter& writer, float block[8][8], const float scaled[8*8
       i++;
     }
 
-    auto encoded = codewords[quantized[i]];
+    auto encoded = BitCode(quantized[i]);
     // combine number of zeros with the number of bits of the next non-zero value
     writer << huffmanAC[offset + encoded.numBits] << encoded; // and the value itself
     offset = 0;
@@ -556,25 +562,6 @@ bool writeJpeg(WRITE_ONE_BYTE output, const void* pixels_, unsigned short width,
     //scaledChrominance[ZigZagInv[i]] = 1 / (quantChrominance[i] * aasf[row] * aasf[column]);
   }
 
-  // ////////////////////////////////////////
-  // precompute JPEG codewords for quantized DCT
-  BitCode  codewordsArray[2 * CodeWordLimit];          // note: quantized[i] is found at codewordsArray[quantized[i] + CodeWordLimit]
-  BitCode* codewords = &codewordsArray[CodeWordLimit]; // allow negative indices, so quantized[i] is at codewords[quantized[i]]
-  uint8_t numBits = 1; // each codeword has at least one bit (value == 0 is undefined)
-  int32_t mask    = 1; // mask is always 2^numBits - 1, initial value 2^1-1 = 2-1 = 1
-  for (int16_t value = 1; value < CodeWordLimit; value++)
-  {
-    // numBits = position of highest set bit (ignoring the sign)
-    // mask    = (2^numBits) - 1
-    if (value > mask) // one more bit ?
-    {
-      numBits++;
-      mask = (mask << 1) | 1; // append a set bit
-    }
-    codewords[-value] = BitCode(mask - value, numBits); // note that I use a negative index => codewords[-value] = codewordsArray[CodeWordLimit  value]
-    codewords[+value] = BitCode(       value, numBits);
-  }
-
   // just convert image data from void*
   auto pixels = (const uint8_t*)pixels_;
 
@@ -634,7 +621,7 @@ bool writeJpeg(WRITE_ONE_BYTE output, const void* pixels_, unsigned short width,
           }
 
         // encode Y channel
-        lastYDC = encodeBlock(bitWriter, Y, scaledLuminance, lastYDC, huffmanLuminanceDC, huffmanLuminanceAC, codewords);
+        lastYDC = encodeBlock(bitWriter, Y, scaledLuminance, lastYDC, huffmanLuminanceDC, huffmanLuminanceAC);
         // Cb and Cr are encoded about 50 lines below
       }
 
@@ -686,8 +673,8 @@ bool writeJpeg(WRITE_ONE_BYTE output, const void* pixels_, unsigned short width,
         } // end of YCbCr420 code for Cb and Cr
 
       // encode Cb and Cr
-      lastCbDC = encodeBlock(bitWriter, Cb, scaledChrominance, lastCbDC, huffmanChrominanceDC, huffmanChrominanceAC, codewords);
-      lastCrDC = encodeBlock(bitWriter, Cr, scaledChrominance, lastCrDC, huffmanChrominanceDC, huffmanChrominanceAC, codewords);
+      lastCbDC = encodeBlock(bitWriter, Cb, scaledChrominance, lastCbDC, huffmanChrominanceDC, huffmanChrominanceAC);
+      lastCrDC = encodeBlock(bitWriter, Cr, scaledChrominance, lastCrDC, huffmanChrominanceDC, huffmanChrominanceAC);
     }
 
   bitWriter.flush(); // now image is completely encoded, write any bits still left in the buffer
