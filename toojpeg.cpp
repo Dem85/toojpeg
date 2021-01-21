@@ -345,9 +345,39 @@ void generateHuffmanTable(const uint8_t numCodes[16], const uint8_t* values, Bit
 
 namespace TooJpeg
 {
+
+uint8_t getComp(const unsigned char* pixel, PIX_FMT pixFmt, RGB_COMP comp)
+{
+	switch(pixFmt) {
+		case RGB888:
+			return pixel[(uint8_t)comp];
+			break;
+		case RGB565:
+			const uint8_t table5[32] = {0, 8, 16, 25, 33, 41, 49, 58, 66, 74, 82, 90, 99, 107, 115, 123, 132,
+				140, 148, 156, 165, 173, 181, 189, 197, 206, 214, 222, 230, 239, 247, 255};
+			const uint8_t table6[64] = {0, 4, 8, 12, 16, 20, 24, 28, 32, 36, 40, 45, 49, 53, 57, 61, 65, 69,
+				73, 77, 81, 85, 89, 93, 97, 101, 105, 109, 113, 117, 121, 125, 130, 134, 138,
+				142, 146, 150, 154, 158, 162, 166, 170, 174, 178, 182, 186, 190, 194, 198,
+				202, 206, 210, 215, 219, 223, 227, 231, 235, 239, 243, 247, 251, 255};
+			switch(comp) {
+				case _R:
+					return table5[pixel[1] >> 3];
+					break;
+				case _G:
+					return table6[((pixel[1] & 0x07) << 3) | ((pixel[0] & 0xe0) >> 5)];
+					break;
+				case _B:
+					return table5[pixel[0] & 0x1f];
+					break;
+			}
+			break;
+	}
+	return 0;
+}
+
 // the only exported function ...
 bool writeJpeg(WRITE_ONE_BYTE output, const void* pixels_, unsigned short width, unsigned short height,
-               bool isRGB, unsigned char quality_, bool downsample, const char* comment)
+               PIX_FMT pixFmt, unsigned char quality_, bool downsample, const char* comment)
 {
   // reject invalid pointers
   if (output == nullptr || pixels_ == nullptr)
@@ -355,6 +385,11 @@ bool writeJpeg(WRITE_ONE_BYTE output, const void* pixels_, unsigned short width,
   // check image format
   if (width == 0 || height == 0)
     return false;
+
+  bool isRGB = (pixFmt != YCBCR);
+
+  // size of input RGB components
+  const auto rgbSize = (pixFmt == RGB565 ? 2 : 3);
 
   // number of components
   const auto numComponents = isRGB ? 3 : 1;
@@ -584,9 +619,9 @@ bool writeJpeg(WRITE_ONE_BYTE output, const void* pixels_, unsigned short width,
               }
 
               // RGB: 3 bytes per pixel (whereas grayscale images have only 1 byte per pixel)
-              auto r = pixels[3 * pixelPos    ];
-              auto g = pixels[3 * pixelPos + 1];
-              auto b = pixels[3 * pixelPos + 2];
+              auto r = getComp(&pixels[rgbSize * pixelPos], pixFmt, _R);
+              auto g = getComp(&pixels[rgbSize * pixelPos], pixFmt, _G);
+              auto b = getComp(&pixels[rgbSize * pixelPos], pixFmt, _B);
 
               Y   [deltaY][deltaX] = rgb2y (r, g, b) - 128; // again, the JPEG standard requires Y to be shifted by 128
               // YCbCr444 is easy - the more complex YCbCr420 has to be computed about 20 lines below in a second pass
@@ -615,11 +650,11 @@ bool writeJpeg(WRITE_ONE_BYTE output, const void* pixels_, unsigned short width,
         {
           auto row      = minimum(mcuY + 2*deltaY, maxHeight); // each deltaX/Y step covers a 2x2 area
           auto column   =         mcuX;                        // column is updated inside next loop
-          auto pixelPos = (row * int(width) + column) * 3;     // numComponents = 3
+          auto pixelPos = (row * int(width) + column) * rgbSize;     // numComponents = 3
 
           // deltas (in bytes) to next row / column, must not exceed image borders
-          auto rowStep    = (row    < maxHeight) ? 3 * int(width) : 0; // always numComponents*width except for bottom    line
-          auto columnStep = (column < maxWidth ) ? 3              : 0; // always numComponents       except for rightmost pixel
+          auto rowStep    = (row    < maxHeight) ? rgbSize * int(width) : 0; // always numComponents*width except for bottom    line
+          auto columnStep = (column < maxWidth ) ? rgbSize              : 0; // always numComponents       except for rightmost pixel
 
           for (short deltaX = 0; deltaX < 8; deltaX++)
           {
@@ -629,23 +664,23 @@ bool writeJpeg(WRITE_ONE_BYTE output, const void* pixels_, unsigned short width,
             auto downRight = pixelPos + columnStep + rowStep;
 
             // note: cast from 8 bits to >8 bits to avoid overflows when adding
-            auto r = short(pixels[pixelPos    ]) + pixels[right    ] + pixels[down    ] + pixels[downRight    ];
-            auto g = short(pixels[pixelPos + 1]) + pixels[right + 1] + pixels[down + 1] + pixels[downRight + 1];
-            auto b = short(pixels[pixelPos + 2]) + pixels[right + 2] + pixels[down + 2] + pixels[downRight + 2];
+            auto r = short(getComp(&pixels[pixelPos], pixFmt, _R)) + getComp(&pixels[down], pixFmt, _R) + getComp(&pixels[downRight], pixFmt, _R);
+            auto g = short(getComp(&pixels[pixelPos], pixFmt, _G)) + getComp(&pixels[down], pixFmt, _G) + getComp(&pixels[downRight], pixFmt, _G);
+            auto b = short(getComp(&pixels[pixelPos], pixFmt, _B)) + getComp(&pixels[down], pixFmt, _B) + getComp(&pixels[downRight], pixFmt, _B);
 
             // convert to Cb and Cr
             Cb[deltaY][deltaX] = rgb2cb(r, g, b) / 4; // I still have to divide r,g,b by 4 to get their average values
             Cr[deltaY][deltaX] = rgb2cr(r, g, b) / 4; // it's a bit faster if done AFTER CbCr conversion
 
             // step forward to next 2x2 area
-            pixelPos += 2*3; // 2 pixels => 6 bytes (2*numComponents)
+            pixelPos += 2*rgbSize; // 2 pixels => 6 bytes (2*numComponents)
             column   += 2;
 
             // reached right border ?
             if (column >= maxWidth)
             {
               columnStep = 0;
-              pixelPos = ((row + 1) * int(width) - 1) * 3; // same as (row * width + maxWidth) * numComponents => current's row last pixel
+              pixelPos = ((row + 1) * int(width) - 1) * rgbSize; // same as (row * width + maxWidth) * numComponents => current's row last pixel
             }
           }
         } // end of YCbCr420 code for Cb and Cr
