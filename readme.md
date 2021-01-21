@@ -1,6 +1,8 @@
 # A JPEG encoder in a single C++ file
 
-*This is a mirror of my library hosted at* https://create.stephan-brumme.com/toojpeg/
+*This fork is for support RGB565 and less memory usage
+
+*The original mirror of this library hosted at* https://create.stephan-brumme.com/toojpeg/
 
 TooJpeg is a compact baseline JPEG/JFIF writer, written in C++11 (but looks like C for the most part).  
 Its interface has only one function: `writeJpeg()` - and that's it !
